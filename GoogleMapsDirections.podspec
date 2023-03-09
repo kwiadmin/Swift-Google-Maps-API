@@ -18,10 +18,10 @@ Pod::Spec.new do |s|
   s.tvos.deployment_target = "9.0"
 
   s.requires_arc     = true
-  s.source_files     = "Source/Core/**/*.*", "Source/Google Maps Directions API/**/*.*"
+  s.source_files     = "Source/GoogleMapsDirectionsAPI/Core/**/*.*", "Source/GoogleMapsDirectionsAPI/**/*.*"
   s.module_name      = "GoogleMapsDirections"
 
   s.dependency 'Alamofire', '~> 4'
-  s.dependency 'ObjectMapper', '~> 3'
+  s.dependency 'ObjectMapper', '~> 4'
 
 end
