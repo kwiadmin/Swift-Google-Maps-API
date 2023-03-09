@@ -106,91 +106,95 @@ public class GoogleMapsDirections: GoogleMapsService {
             requestParameters["transit_routing_preference"] = transitRoutingPreference.rawValue
         }
         
-        Alamofire.request(baseURLString, method: .get, parameters: requestParameters).responseJSON { response in
-            if response.result.isFailure {
+        AF.request(baseURLString, method: .get, parameters: requestParameters).responseJSON { response in
+            
+            switch response.result {
+            case .success(let value):
+                
+                // Nil
+                if value is NSNull {
+                    completion?(Response(), nil)
+                    return
+                }
+                
+                // JSON
+                guard let json = value as? [String : AnyObject] else {
+                    NSLog("Error: Parsing json failed")
+                    completion?(nil, NSError(domain: "GoogleMapsDirectionsError", code: -2, userInfo: nil))
+                    return
+                }
+                
+                guard let directionsResponse = Mapper<Response>().map(JSON: json) else {
+                    NSLog("Error: Mapping directions response failed")
+                    completion?(nil, NSError(domain: "GoogleMapsDirectionsError", code: -3, userInfo: nil))
+                    return
+                }
+                
+                var error: NSError?
+                
+                switch directionsResponse.status {
+                case .none:
+                    let userInfo = [
+                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: ""),
+                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: "")
+                    ]
+                    error = NSError(domain: "GoogleMapsDirectionsError", code: -4, userInfo: userInfo)
+                case .some(let status):
+                    switch status {
+                    case .ok:
+                        break
+                    case .notFound:
+                        let userInfo = [
+                            NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "At least one of the locations specified in the request's origin, destination, or waypoints could not be geocoded.", comment: ""),
+                            NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
+                        ]
+                        error = NSError(domain: "GoogleMapsDirectionsError", code: -5, userInfo: userInfo)
+                    case .zeroResults:
+                        let userInfo = [
+                            NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "No route could be found between the origin and destination.", comment: ""),
+                            NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
+                        ]
+                        error = NSError(domain: "GoogleMapsDirectionsError", code: -6, userInfo: userInfo)
+                    case .maxWaypointsExceeded:
+                        let userInfo = [
+                            NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Too many waypoints were provided in the request. The maximum allowed number of waypoints is 23, plus the origin and destination. (If the request does not include an API key, the maximum allowed number of waypoints is 8.", comment: ""),
+                            NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
+                        ]
+                        error = NSError(domain: "GoogleMapsDirectionsError", code: -7, userInfo: userInfo)
+                    case .invalidRequest:
+                        let userInfo = [
+                            NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Provided request was invalid. Common causes of this status include an invalid parameter or parameter value.", comment: ""),
+                            NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
+                        ]
+                        error = NSError(domain: "GoogleMapsDirectionsError", code: -8, userInfo: userInfo)
+                    case .overQueryLimit:
+                        let userInfo = [
+                            NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Service has received too many requests from your application within the allowed time period.", comment: ""),
+                            NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
+                        ]
+                        error = NSError(domain: "GoogleMapsDirectionsError", code: -9, userInfo: userInfo)
+                    case .requestDenied:
+                        let userInfo = [
+                            NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Service denied use of the directions service by your application.", comment: ""),
+                            NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
+                        ]
+                        error = NSError(domain: "GoogleMapsDirectionsError", code: -10, userInfo: userInfo)
+                    case .unknownError:
+                        let userInfo = [
+                            NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "A directions request could not be processed due to a server error. The request may succeed if you try again.", comment: ""),
+                            NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
+                        ]
+                        error = NSError(domain: "GoogleMapsDirectionsError", code: -11, userInfo: userInfo)
+                    }
+                }
+                
+                completion?(directionsResponse, error)
+                
+            case .failure:
                 NSLog("Error: GET failed")
                 completion?(nil, NSError(domain: "GoogleMapsDirectionsError", code: -1, userInfo: nil))
                 return
             }
-            
-            // Nil
-            if let _ = response.result.value as? NSNull {
-                completion?(Response(), nil)
-                return
-            }
-            
-            // JSON
-            guard let json = response.result.value as? [String : AnyObject] else {
-                NSLog("Error: Parsing json failed")
-                completion?(nil, NSError(domain: "GoogleMapsDirectionsError", code: -2, userInfo: nil))
-                return
-            }
-            
-            guard let directionsResponse = Mapper<Response>().map(JSON: json) else {
-                NSLog("Error: Mapping directions response failed")
-                completion?(nil, NSError(domain: "GoogleMapsDirectionsError", code: -3, userInfo: nil))
-                return
-            }
-            
-            var error: NSError?
-            
-            switch directionsResponse.status {
-            case .none:
-                let userInfo = [
-                    NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: ""),
-                    NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: "")
-                ]
-                error = NSError(domain: "GoogleMapsDirectionsError", code: -4, userInfo: userInfo)
-            case .some(let status):
-                switch status {
-                case .ok:
-                    break
-                case .notFound:
-                    let userInfo = [
-                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "At least one of the locations specified in the request's origin, destination, or waypoints could not be geocoded.", comment: ""),
-                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
-                    ]
-                    error = NSError(domain: "GoogleMapsDirectionsError", code: -5, userInfo: userInfo)
-                case .zeroResults:
-                    let userInfo = [
-                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "No route could be found between the origin and destination.", comment: ""),
-                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
-                    ]
-                    error = NSError(domain: "GoogleMapsDirectionsError", code: -6, userInfo: userInfo)
-                case .maxWaypointsExceeded:
-                    let userInfo = [
-                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Too many waypoints were provided in the request. The maximum allowed number of waypoints is 23, plus the origin and destination. (If the request does not include an API key, the maximum allowed number of waypoints is 8.", comment: ""),
-                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
-                    ]
-                    error = NSError(domain: "GoogleMapsDirectionsError", code: -7, userInfo: userInfo)
-                case .invalidRequest:
-                    let userInfo = [
-                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Provided request was invalid. Common causes of this status include an invalid parameter or parameter value.", comment: ""),
-                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
-                    ]
-                    error = NSError(domain: "GoogleMapsDirectionsError", code: -8, userInfo: userInfo)
-                case .overQueryLimit:
-                    let userInfo = [
-                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Service has received too many requests from your application within the allowed time period.", comment: ""),
-                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
-                    ]
-                    error = NSError(domain: "GoogleMapsDirectionsError", code: -9, userInfo: userInfo)
-                case .requestDenied:
-                    let userInfo = [
-                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Service denied use of the directions service by your application.", comment: ""),
-                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
-                    ]
-                    error = NSError(domain: "GoogleMapsDirectionsError", code: -10, userInfo: userInfo)
-                case .unknownError:
-                    let userInfo = [
-                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "A directions request could not be processed due to a server error. The request may succeed if you try again.", comment: ""),
-                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: directionsResponse.errorMessage ?? "", comment: "")
-                    ]
-                    error = NSError(domain: "GoogleMapsDirectionsError", code: -11, userInfo: userInfo)
-                }
-            }
-            
-            completion?(directionsResponse, error)
         }
     }
 }

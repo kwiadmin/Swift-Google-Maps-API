@@ -62,68 +62,65 @@ public class GooglePlaces: GoogleMapsService {
             pendingRequest = nil
         }
         
-        let request = Alamofire.request(placeAutocompleteURLString, method: .get, parameters: requestParameters)
+        let request = AF.request(placeAutocompleteURLString, method: .get, parameters: requestParameters)
         
         // debugging only:
         //print("\n - autocomplete request: ", request, " at: ", NSDate(timeIntervalSince1970: TimeInterval(TimeInterval(NSDate().timeIntervalSince1970))))
         
         request.responseJSON { response in
-            
-            if response.result.error?._code == NSURLErrorCancelled {
-                // nothing to do, another active request is coming
-                return
-            }
-            
-            if response.result.isFailure {
-                NSLog("Error: GET failed")
-                completion?(nil, NSError(domain: "GooglePlacesError", code: -1, userInfo: nil))
-                return
-            }
-            
-            // Nil
-            if let _ = response.result.value as? NSNull {
-                completion?(PlaceAutocompleteResponse(), nil)
-                return
-            }
-            
-            // JSON
-            guard let json = response.result.value as? [String : AnyObject] else {
-                NSLog("Error: Parsing json failed")
-                completion?(nil, NSError(domain: "GooglePlacesError", code: -2, userInfo: nil))
-                return
-            }
-            
-            guard let response = Mapper<PlaceAutocompleteResponse>().map(JSON: json) else {
-                NSLog("Error: Mapping directions response failed")
-                completion?(nil, NSError(domain: "GooglePlacesError", code: -3, userInfo: nil))
-                return
-            }
-            
-            var error: NSError?
-            
-            switch response.status {
-            case .none:
-                let userInfo = [
-                    NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: ""),
-                    NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: "")
-                ]
-                error = NSError(domain: "GooglePlacesError", code: -1, userInfo: userInfo)
-            case .some(let status):
-                switch status {
-                case .ok:
-                    break
-                default:
+            switch response.result {
+            case .success(let value):
+                // Nil
+                if value is NSNull {
+                    completion?(PlaceAutocompleteResponse(), nil)
+                    return
+                }
+                
+                // JSON
+                guard let json = value as? [String : AnyObject] else {
+                    NSLog("Error: Parsing json failed")
+                    completion?(nil, NSError(domain: "GooglePlacesError", code: -2, userInfo: nil))
+                    return
+                }
+                
+                guard let response = Mapper<PlaceAutocompleteResponse>().map(JSON: json) else {
+                    NSLog("Error: Mapping directions response failed")
+                    completion?(nil, NSError(domain: "GooglePlacesError", code: -3, userInfo: nil))
+                    return
+                }
+                
+                var error: NSError?
+                
+                switch response.status {
+                case .none:
                     let userInfo = [
-                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: status.rawValue, comment: ""),
-                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: response.errorMessage ?? "", comment: "")
+                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: ""),
+                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: "")
                     ]
                     error = NSError(domain: "GooglePlacesError", code: -1, userInfo: userInfo)
+                case .some(let status):
+                    switch status {
+                    case .ok:
+                        break
+                    default:
+                        let userInfo = [
+                            NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: status.rawValue, comment: ""),
+                            NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: response.errorMessage ?? "", comment: "")
+                        ]
+                        error = NSError(domain: "GooglePlacesError", code: -1, userInfo: userInfo)
+                    }
                 }
+                
+                pendingRequest = nil
+                
+                completion?(response, error)
+            case .failure(let error):
+                if (error as NSError).code == NSURLErrorCancelled {
+                    // nothing to do, another active request is coming
+                    return
+                }
+                completion?(nil, NSError(domain: "GooglePlacesError", code: -1, userInfo: nil))
             }
-            
-            pendingRequest = nil
-            
-            completion?(response, error)
         }
         
         pendingRequest = request
@@ -135,13 +132,13 @@ public class GooglePlaces: GoogleMapsService {
 // MARK: - Place Details
 public extension GooglePlaces {
     
-    public static let placeDetailsURLString = "https://maps.googleapis.com/maps/api/place/details/json"
+    static let placeDetailsURLString = "https://maps.googleapis.com/maps/api/place/details/json"
     
-    public class func placeDetails(forPlaceID placeID: String,
-                                   forSessionToken sessiontoken: String? = nil,
-                                   extensions: String? = nil,
-                                   language: String? = nil,
-                                   completion: ((_ response: PlaceDetailsResponse?, _ error: NSError?) -> Void)?) {
+    class func placeDetails(forPlaceID placeID: String,
+                            forSessionToken sessiontoken: String? = nil,
+                            extensions: String? = nil,
+                            language: String? = nil,
+                            completion: ((_ response: PlaceDetailsResponse?, _ error: NSError?) -> Void)?) {
         
         var requestParameters = baseRequestParameters + ["placeid" : placeID]
         
@@ -160,61 +157,62 @@ public extension GooglePlaces {
         // critical: 'fields' parameter described as "optional" in documentation (it is not if you do not want to be billed for all data skus)
         requestParameters["fields"] = "address_components"
         
-        let placeDetailsRequest = Alamofire.request(placeDetailsURLString, method: .get, parameters: requestParameters)
+        let placeDetailsRequest = AF.request(placeDetailsURLString, method: .get, parameters: requestParameters)
         
         // debugging only:
         //print("\n - place details request: ", placeDetailsRequest.request, " at: ", NSDate(timeIntervalSince1970: TimeInterval(TimeInterval(NSDate().timeIntervalSince1970))), "\n")
         
         placeDetailsRequest.responseJSON { response in
 
-            if response.result.isFailure {
+            switch response.result {
+            case .success(let value):
+                // Nil
+                if value is NSNull {
+                    completion?(PlaceDetailsResponse(), nil)
+                    return
+                }
+
+                // JSON
+                guard let json = value as? [String : Any] else {
+                    NSLog("Error: Parsing json failed")
+                    completion?(nil, NSError(domain: "GooglePlacesError", code: -2, userInfo: nil))
+                    return
+                }
+
+                guard let response = Mapper<PlaceDetailsResponse>().map(JSON: json) else {
+                    NSLog("Error: Mapping directions response failed")
+                    completion?(nil, NSError(domain: "GooglePlacesError", code: -3, userInfo: nil))
+                    return
+                }
+
+                var error: NSError?
+
+                switch response.status {
+                case .none:
+                    let userInfo = [
+                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: ""),
+                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: "")
+                    ]
+                    error = NSError(domain: "GooglePlacesError", code: -1, userInfo: userInfo)
+                case .some(let status):
+                    switch status {
+                    case .ok:
+                        break
+                    default:
+                        let userInfo = [
+                            NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: status.rawValue, comment: ""),
+                            NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: response.errorMessage ?? "", comment: "")
+                        ]
+                        error = NSError(domain: "GooglePlacesError", code: -1, userInfo: userInfo)
+                    }
+                }
+
+                completion?(response, error)
+            case .failure:
                 NSLog("Error: GET failed")
                 completion?(nil, NSError(domain: "GooglePlacesError", code: -1, userInfo: nil))
                 return
             }
-
-            // Nil
-            if let _ = response.result.value as? NSNull {
-                completion?(PlaceDetailsResponse(), nil)
-                return
-            }
-
-            // JSON
-            guard let json = response.result.value as? [String : Any] else {
-                NSLog("Error: Parsing json failed")
-                completion?(nil, NSError(domain: "GooglePlacesError", code: -2, userInfo: nil))
-                return
-            }
-
-            guard let response = Mapper<PlaceDetailsResponse>().map(JSON: json) else {
-                NSLog("Error: Mapping directions response failed")
-                completion?(nil, NSError(domain: "GooglePlacesError", code: -3, userInfo: nil))
-                return
-            }
-
-            var error: NSError?
-
-            switch response.status {
-            case .none:
-                let userInfo = [
-                    NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: ""),
-                    NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: "Status Code not found", comment: "")
-                ]
-                error = NSError(domain: "GooglePlacesError", code: -1, userInfo: userInfo)
-            case .some(let status):
-                switch status {
-                case .ok:
-                    break
-                default:
-                    let userInfo = [
-                        NSLocalizedDescriptionKey : NSLocalizedString("StatusCodeError", value: status.rawValue, comment: ""),
-                        NSLocalizedFailureReasonErrorKey : NSLocalizedString("StatusCodeError", value: response.errorMessage ?? "", comment: "")
-                    ]
-                    error = NSError(domain: "GooglePlacesError", code: -1, userInfo: userInfo)
-                }
-            }
-
-            completion?(response, error)
         }
     }
 }
