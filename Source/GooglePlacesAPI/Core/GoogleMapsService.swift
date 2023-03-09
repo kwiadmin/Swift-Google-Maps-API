@@ -11,16 +11,19 @@ import Foundation
 open class GoogleMapsService {
     enum GoogleMapsServiceError: Error {
         case apiKeyNotExisted
+        case sessionTokenNotExisted
     }
     
     fileprivate static var _apiKey: String?
+    fileprivate static var _sessiontoken: String?
     
     /**
      Provide a Google Maps API key
      
      - parameter APIKey: Google Maps API key
      */
-    public class func provide(apiKey: String) {
+    public class func provide(apiKey: String, sessionToken: String? = nil) {
+        _sessiontoken = sessionToken
         _apiKey = apiKey
     }
     
@@ -39,8 +42,28 @@ open class GoogleMapsService {
         return apiKey
     }
     
+    /**
+     Return a valid session token, or throw an exception
+     
+     - throws: session token error
+     
+     - returns: session token string
+     */
+    class func sessionToken() throws -> String {
+        guard let sessiontoken = _sessiontoken else {
+            NSLog("Error: Please provide a session token")
+            throw GoogleMapsServiceError.sessionTokenNotExisted
+        }
+        return sessiontoken
+    }
+
     /// Get a base request parameter dictionary, this will include API key
     class var baseRequestParameters: [String : String] {
         return try! ["key" : apiKey()]
+    }
+    
+    /// Get a base request parameter dictionary, this will include API key
+    class var sessionTokenParameter: [String : String] {
+        return try! ["sessiontoken" : sessionToken()]
     }
 }

@@ -17,6 +17,7 @@ public class GooglePlaces: GoogleMapsService {
     public static let placeAutocompleteURLString = "https://maps.googleapis.com/maps/api/place/autocomplete/json"
     
     public class func placeAutocomplete(forInput input: String,
+                                        sessiontoken: String? = nil,
                                         offset: Int? = nil,
                                         locationCoordinate: LocationCoordinate2D? = nil,
                                         radius: Int? = nil,
@@ -24,11 +25,13 @@ public class GooglePlaces: GoogleMapsService {
                                         types: [PlaceType]? = nil,
                                         components: String? = nil,
                                         cancelPendingRequestsAutomatically: Bool = true,
-                                        completion: ((PlaceAutocompleteResponse?, NSError?) -> Void)?)
-    {
-        var requestParameters: [String : Any] = baseRequestParameters + [
-            "input" : input
-        ]
+                                        completion: ((PlaceAutocompleteResponse?, NSError?) -> Void)?) {
+        
+        var requestParameters: [String : Any] = baseRequestParameters + ["input" : input]
+        
+        if let sessiontoken = sessiontoken {
+            requestParameters["sessiontoken"] = sessiontoken
+        }
         
         if let offset = offset {
             requestParameters["offset"] = offset
@@ -59,7 +62,13 @@ public class GooglePlaces: GoogleMapsService {
             pendingRequest = nil
         }
         
-        let request = Alamofire.request(placeAutocompleteURLString, method: .get, parameters: requestParameters).responseJSON { response in
+        let request = Alamofire.request(placeAutocompleteURLString, method: .get, parameters: requestParameters)
+        
+        // debugging only:
+        //print("\n - autocomplete request: ", request, " at: ", NSDate(timeIntervalSince1970: TimeInterval(TimeInterval(NSDate().timeIntervalSince1970))))
+        
+        request.responseJSON { response in
+            
             if response.result.error?._code == NSURLErrorCancelled {
                 // nothing to do, another active request is coming
                 return
@@ -128,47 +137,63 @@ public extension GooglePlaces {
     
     public static let placeDetailsURLString = "https://maps.googleapis.com/maps/api/place/details/json"
     
-    public class func placeDetails(forPlaceID placeID: String, extensions: String? = nil, language: String? = nil, completion: ((_ response: PlaceDetailsResponse?, _ error: NSError?) -> Void)?) {
-        var requestParameters = baseRequestParameters + [
-            "placeid" : placeID
-        ]
+    public class func placeDetails(forPlaceID placeID: String,
+                                   forSessionToken sessiontoken: String? = nil,
+                                   extensions: String? = nil,
+                                   language: String? = nil,
+                                   completion: ((_ response: PlaceDetailsResponse?, _ error: NSError?) -> Void)?) {
+        
+        var requestParameters = baseRequestParameters + ["placeid" : placeID]
+        
+        if let sessiontoken = sessiontoken {
+            requestParameters["sessiontoken"] = sessiontoken
+        }
         
         if let extensions = extensions {
             requestParameters["extensions"] = extensions
         }
-        
+
         if let language = language {
             requestParameters["language"] = language
         }
         
-        Alamofire.request(placeDetailsURLString, method: .get, parameters: requestParameters).responseJSON { response in
+        // critical: 'fields' parameter described as "optional" in documentation (it is not if you do not want to be billed for all data skus)
+        requestParameters["fields"] = "address_components"
+        
+        let placeDetailsRequest = Alamofire.request(placeDetailsURLString, method: .get, parameters: requestParameters)
+        
+        // debugging only:
+        //print("\n - place details request: ", placeDetailsRequest.request, " at: ", NSDate(timeIntervalSince1970: TimeInterval(TimeInterval(NSDate().timeIntervalSince1970))), "\n")
+        
+        placeDetailsRequest.responseJSON { response in
+
             if response.result.isFailure {
                 NSLog("Error: GET failed")
                 completion?(nil, NSError(domain: "GooglePlacesError", code: -1, userInfo: nil))
                 return
             }
-            
+
             // Nil
             if let _ = response.result.value as? NSNull {
                 completion?(PlaceDetailsResponse(), nil)
                 return
             }
-            
+
             // JSON
             guard let json = response.result.value as? [String : Any] else {
                 NSLog("Error: Parsing json failed")
                 completion?(nil, NSError(domain: "GooglePlacesError", code: -2, userInfo: nil))
                 return
             }
-            
+
             guard let response = Mapper<PlaceDetailsResponse>().map(JSON: json) else {
                 NSLog("Error: Mapping directions response failed")
                 completion?(nil, NSError(domain: "GooglePlacesError", code: -3, userInfo: nil))
                 return
             }
-            
+
             var error: NSError?
-            
+
             switch response.status {
             case .none:
                 let userInfo = [
@@ -188,7 +213,7 @@ public extension GooglePlaces {
                     error = NSError(domain: "GooglePlacesError", code: -1, userInfo: userInfo)
                 }
             }
-            
+
             completion?(response, error)
         }
     }
